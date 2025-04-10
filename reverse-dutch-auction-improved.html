@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reverse Dutch Auction System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .login-container, .admin-panel, .auction-container {
+            display: none;
+        }
+        .price-display {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .timer {
+            font-size: 1.5rem;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 1rem;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #dc3545;
+            color: white;
+        }
+        .bid-history {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .bid-history h3 {
+            margin-bottom: 10px;
+        }
+        .bid-record {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .center {
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+        .admin-controls {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .invalid-feedback {
+            color: #dc3545;
+            font-size: 0.85rem;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="center">Reverse Dutch Auction System</h1>
+    
+    <!-- Login Section -->
+    <div id="loginContainer" class="container login-container">
+        <h2>Login</h2>
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" placeholder="Enter username">
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter password">
+        </div>
+        <button id="loginBtn" class="btn btn-primary">Login</button>
+    </div>
+    
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="container admin-panel">
+        <h2>Admin Panel</h2>
+        <div class="form-group">
+            <label for="startPrice">Starting Price ($):</label>
+            <input type="number" id="startPrice" value="10000">
+            <div class="invalid-feedback" id="startPriceError">Please enter a valid positive number.</div>
+        </div>
+        <div class="form-group">
+            <label for="priceDecrement">Price Decrement ($):</label>
+            <input type="number" id="priceDecrement" value="100">
+            <div class="invalid-feedback" id="priceDecrementError">Please enter a valid positive number.</div>
+        </div>
+        <div class="form-group">
+            <label for="reservePrice">Reserve Price ($):</label>
+            <input type="number" id="reservePrice" value="5000">
+            <div class="invalid-feedback" id="reservePriceError">Please enter a valid positive number less than starting price.</div>
+        </div>
+        <div class="form-group">
+            <label for="intervalSeconds">Time Interval (seconds):</label>
+            <input type="number" id="intervalSeconds" value="5">
+            <div class="invalid-feedback" id="intervalSecondsError">Please enter a valid positive number.</div>
+        </div>
+        <div class="form-group">
+            <label for="majorityShare">Majority Share (%):</label>
+            <input type="number" id="majorityShare" value="70">
+            <div class="invalid-feedback" id="majorityShareError">Please enter a number between 51 and 99.</div>
+        </div>
+        <button id="startAuctionBtn" class="btn btn-primary">Start Auction</button>
+        <button id="resetAuctionBtn" class="btn btn-danger">Reset Auction</button>
+        <button id="logoutAdminBtn" class="btn">Logout</button>
+        
+        <div class="admin-controls">
+            <h3>Current Auction Status</h3>
+            <div id="auctionStatus">No active auction</div>
+        </div>
+    </div>
+    
+    <!-- Auction Room for Sellers -->
+    <div id="auctionContainer" class="container auction-container">
+        <h2>Reverse Dutch Auction</h2>
+        <p>Welcome, <span id="sellerName">Seller</span></p>
+        
+        <div class="price-display">
+            Current Price: $<span id="currentPrice">0</span>
+        </div>
+        
+        <div class="timer">
+            Next price decrease in: <span id="countdown">5</span> seconds
+        </div>
+        
+        <div class="center">
+            <button id="acceptBidBtn" class="btn btn-success">Accept Current Price</button>
+            <button id="logoutSellerBtn" class="btn">Logout</button>
+        </div>
+        
+        <div class="bid-history">
+            <h3>Auction Activity</h3>
+            <div id="bidHistory"></div>
+        </div>
+    </div>
+
+    <script>
+        // User data (in a real application, this would be stored in a database)
+        const users = {
+            'admin': { password: 'admin123', role: 'admin' },
+            'seller1': { password: 'seller1', role: 'seller', name: 'Seller 1' },
+            'seller2': { password: 'seller2', role: 'seller', name: 'Seller 2' }
+        };
+        
+        // Default auction parameters
+        const defaults = {
+            startPrice: 10000,
+            priceDecrement: 100,
+            reservePrice: 5000,
+            intervalSeconds: 5,
+            majorityShare: 70
+        };
+        
+        // Auction data
+        let auction = {
+            active: false,
+            startPrice: defaults.startPrice,
+            currentPrice: defaults.startPrice,
+            priceDecrement: defaults.priceDecrement,
+            reservePrice: defaults.reservePrice,
+            intervalSeconds: defaults.intervalSeconds,
+            majorityShare: defaults.majorityShare,
+            countdownTimer: null,
+            currentInterval: null,
+            winner: null,
+            bidHistory: []
+        };
+        
+        // DOM Elements
+        const loginContainer = document.getElementById('loginContainer');
+        const adminPanel = document.getElementById('adminPanel');
+        const auctionContainer = document.getElementById('auctionContainer');
+        const loginBtn = document.getElementById('loginBtn');
+        const startAuctionBtn = document.getElementById('startAuctionBtn');
+        const resetAuctionBtn = document.getElementById('resetAuctionBtn');
+        const acceptBidBtn = document.getElementById('acceptBidBtn');
+        const logoutAdminBtn = document.getElementById('logoutAdminBtn');
+        const logoutSellerBtn = document.getElementById('logoutSellerBtn');
+        const currentPriceDisplay = document.getElementById('currentPrice');
+        const countdownDisplay = document.getElementById('countdown');
+        const bidHistoryDisplay = document.getElementById('bidHistory');
+        const sellerNameDisplay = document.getElementById('sellerName');
+        const auctionStatusDisplay = document.getElementById('auctionStatus');
+        
+        // Input elements
+        const startPriceInput = document.getElementById('startPrice');
+        const priceDecrementInput = document.getElementById('priceDecrement');
+        const reservePriceInput = document.getElementById('reservePrice');
+        const intervalSecondsInput = document.getElementById('intervalSeconds');
+        const majorityShareInput = document.getElementById('majorityShare');
+        
+        // Error elements
+        const startPriceError = document.getElementById('startPriceError');
+        const priceDecrementError = document.getElementById('priceDecrementError');
+        const reservePriceError = document.getElementById('reservePriceError');
+        const intervalSecondsError = document.getElementById('intervalSecondsError');
+        const majorityShareError = document.getElementById('majorityShareError');
+        
+        // Current user
+        let currentUser = null;
+        
+        // Show login screen initially
+        loginContainer.style.display = 'block';
+        
+        // Login functionality
+        loginBtn.addEventListener('click', () => {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (users[username] && users[username].password === password) {
+                currentUser = username;
+                loginContainer.style.display = 'none';
+                
+                if (users[username].role === 'admin') {
+                    adminPanel.style.display = 'block';
+                    updateAuctionStatus();
+                } else {
+                    auctionContainer.style.display = 'block';
+                    sellerNameDisplay.textContent = users[username].name;
+                    if (auction.active) {
+                        currentPriceDisplay.textContent = auction.currentPrice;
+                    } else {
+                        addBidRecord('Waiting for auction to start...');
+                    }
+                }
+            } else {
+                alert('Invalid username or password');
+            }
+        });
+        
+        // Admin: Start Auction
+        startAuctionBtn.addEventListener('click', () => {
+            // Reset error displays
+            resetErrorMessages();
+            
+            // Validate and get auction parameters with fallbacks to defaults
+            const startPrice = validatePositiveNumber(startPriceInput.value, defaults.startPrice, startPriceError);
+            const priceDecrement = validatePositiveNumber(priceDecrementInput.value, defaults.priceDecrement, priceDecrementError);
+            const reservePrice = validateReservePrice(reservePriceInput.value, startPrice, reservePriceError);
+            const intervalSeconds = validatePositiveNumber(intervalSecondsInput.value, defaults.intervalSeconds, intervalSecondsError);
+            const majorityShare = validateMajorityShare(majorityShareInput.value, defaults.majorityShare, majorityShareError);
+            
+            // Update input fields with validated values
+            startPriceInput.value = startPrice;
+            priceDecrementInput.value = priceDecrement;
+            reservePriceInput.value = reservePrice;
+            intervalSecondsInput.value = intervalSeconds;
+            majorityShareInput.value = majorityShare;
+            
+            // Initialize auction with validated values
+            auction.active = true;
+            auction.startPrice = startPrice;
+            auction.currentPrice = startPrice;
+            auction.priceDecrement = priceDecrement;
+            auction.reservePrice = reservePrice;
+            auction.intervalSeconds = intervalSeconds;
+            auction.majorityShare = majorityShare;
+            auction.winner = null;
+            auction.bidHistory = [];
+            
+            // Add start record
+            addBidRecord('Auction started by Admin');
+            
+            // Start the countdown
+            startCountdown();
+            
+            // Update the auction status
+            updateAuctionStatus();
+        });
+        
+        // Validate positive number with fallback
+        function validatePositiveNumber(value, defaultValue, errorElement) {
+            const number = parseFloat(value);
+            if (isNaN(number) || number <= 0) {
+                errorElement.style.display = 'block';
+                return defaultValue;
+            }
+            return number;
+        }
+        
+        // Validate reserve price
+        function validateReservePrice(value, startPrice, errorElement) {
+            const number = parseFloat(value);
+            if (isNaN(number) || number <= 0 || number >= startPrice) {
+                errorElement.style.display = 'block';
+                return Math.min(defaults.reservePrice, startPrice / 2);
+            }
+            return number;
+        }
+        
+        // Validate majority share
+        function validateMajorityShare(value, defaultValue, errorElement) {
+            const number = parseFloat(value);
+            if (isNaN(number) || number <= 50 || number >= 100) {
+                errorElement.style.display = 'block';
+                return defaultValue;
+            }
+            return number;
+        }
+        
+        // Reset all error messages
+        function resetErrorMessages() {
+            startPriceError.style.display = 'none';
+            priceDecrementError.style.display = 'none';
+            reservePriceError.style.display = 'none';
+            intervalSecondsError.style.display = 'none';
+            majorityShareError.style.display = 'none';
+        }
+        
+        // Admin: Reset Auction
+        resetAuctionBtn.addEventListener('click', () => {
+            stopAuction();
+            addBidRecord('Auction reset by Admin');
+            updateAuctionStatus();
+        });
+        
+        // Seller: Accept current price
+        acceptBidBtn.addEventListener('click', () => {
+            if (!auction.active) {
+                alert('The auction is not currently active');
+                return;
+            }
+            
+            if (auction.winner) {
+                alert('This auction has already been won');
+                return;
+            }
+            
+            // Set the winner
+            auction.winner = currentUser;
+            addBidRecord(`${users[currentUser].name} accepted price of $${auction.currentPrice}`);
+            
+            // Stop the auction
+            stopAuction();
+            updateAuctionStatus();
+        });
+        
+        // Logout buttons
+        logoutAdminBtn.addEventListener('click', logout);
+        logoutSellerBtn.addEventListener('click', logout);
+        
+        // Logout function
+        function logout() {
+            currentUser = null;
+            adminPanel.style.display = 'none';
+            auctionContainer.style.display = 'none';
+            loginContainer.style.display = 'block';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+        
+        // Start countdown timer
+        function startCountdown() {
+            // Clear any existing intervals
+            if (auction.currentInterval) {
+                clearInterval(auction.currentInterval);
+            }
+            
+            // Set the countdown
+            let countdown = auction.intervalSeconds;
+            countdownDisplay.textContent = countdown;
+            
+            // Start the interval
+            auction.currentInterval = setInterval(() => {
+                countdown--;
+                countdownDisplay.textContent = countdown;
+                
+                if (countdown <= 0) {
+                    decrementPrice();
+                    countdown = auction.intervalSeconds;
+                    countdownDisplay.textContent = countdown;
+                }
+            }, 1000);
+        }
+        
+        // Decrement the price
+        function decrementPrice() {
+            auction.currentPrice -= auction.priceDecrement;
+            currentPriceDisplay.textContent = auction.currentPrice;
+            
+            addBidRecord(`Price dropped to $${auction.currentPrice}`);
+            
+            // Check if we've reached the reserve price
+            if (auction.currentPrice <= auction.reservePrice) {
+                addBidRecord(`Reserve price of $${auction.reservePrice} reached`);
+                stopAuction();
+                updateAuctionStatus();
+            }
+        }
+        
+        // Stop the auction
+        function stopAuction() {
+            auction.active = false;
+            if (auction.currentInterval) {
+                clearInterval(auction.currentInterval);
+                auction.currentInterval = null;
+            }
+            
+            // Determine and announce the result
+            if (auction.winner) {
+                const winnerName = users[auction.winner].name;
+                const minorityShare = 100 - auction.majorityShare;
+                
+                addBidRecord(`Auction ended. ${winnerName} wins ${auction.majorityShare}% of the contract at $${auction.currentPrice}`);
+                addBidRecord(`The other seller receives ${minorityShare}% of the contract`);
+            } else if (auction.currentPrice <= auction.reservePrice) {
+                addBidRecord('Auction ended. No winner, reserve price reached');
+            } else {
+                addBidRecord('Auction stopped by Admin');
+            }
+        }
+        
+        // Add a record to the bid history
+        function addBidRecord(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const record = document.createElement('div');
+            record.className = 'bid-record';
+            record.innerHTML = `<strong>${timestamp}</strong>: ${message}`;
+            
+            // Add to the beginning of the history
+            bidHistoryDisplay.insertBefore(record, bidHistoryDisplay.firstChild);
+            
+            // Add to auction history array
+            auction.bidHistory.push({ timestamp, message });
+        }
+        
+        // Update auction status in admin panel
+        function updateAuctionStatus() {
+            if (auction.active) {
+                auctionStatusDisplay.innerHTML = `
+                    <p><strong>Status:</strong> Active</p>
+                    <p><strong>Current Price:</strong> $${auction.currentPrice}</p>
+                    <p><strong>Starting Price:</strong> $${auction.startPrice}</p>
+                    <p><strong>Price Decrement:</strong> $${auction.priceDecrement} every ${auction.intervalSeconds} seconds</p>
+                    <p><strong>Reserve Price:</strong> $${auction.reservePrice}</p>
+                `;
+            } else if (auction.winner) {
+                const winnerName = users[auction.winner].name;
+                auctionStatusDisplay.innerHTML = `
+                    <p><strong>Status:</strong> Completed</p>
+                    <p><strong>Winner:</strong> ${winnerName}</p>
+                    <p><strong>Winning Price:</strong> $${auction.currentPrice}</p>
+                    <p><strong>Contract Split:</strong> ${winnerName} gets ${auction.majorityShare}%, other seller gets ${100-auction.majorityShare}%</p>
+                `;
+            } else {
+                auctionStatusDisplay.innerHTML = `
+                    <p><strong>Status:</strong> Inactive</p>
+                    <p>Configure auction parameters and press "Start Auction" to begin</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
